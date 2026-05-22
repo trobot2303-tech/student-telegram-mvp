@@ -346,34 +346,36 @@ async def miniapp(request: Request):
         </div>
 
         <!-- Модальное окно привязки -->
-        <div class="modal" id="bindModal">
-            <div class="modal-content">
-                <h3>🔐 Привязка кошелька</h3>
-                <p>Выберите кошелёк для быстрой подписи или скопируйте сообщение вручную.</p>
-                
-                <!-- Кнопки диплинков -->
-                <div id="walletDeepLinks" style="display: flex; gap: 8px; margin: 12px 0;">
-                    <a href="#" id="metamaskLink" target="_blank" class="btn btn-primary" style="flex:1; font-size:14px; text-decoration:none; text-align:center;">
-                        🦊 MetaMask
-                    </a>
-                    <a href="#" id="trustLink" target="_blank" class="btn btn-primary" style="flex:1; font-size:14px; text-decoration:none; text-align:center;">
-                        🛡️ Trust Wallet
-                    </a>
-                </div>
-                
-                <label>Сообщение для подписи:</label>
-                <textarea id="messageToSign" readonly rows="4"></textarea>
-                <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
-                <label>Адрес кошелька (0x...):</label>
-                <input type="text" id="walletAddress" placeholder="0x...">
-                <label>Подпись (0x...):</label>
-                <input type="text" id="signature" placeholder="0x...">
-                <div class="modal-buttons">
-                    <button class="btn btn-primary" id="confirmBindBtn">✅ Привязать</button>
-                    <button class="btn btn-secondary" id="cancelBindBtn">Отмена</button>
-                </div>
-            </div>
+<div class="modal" id="bindModal">
+    <div class="modal-content">
+        <h3>🔐 Привязка кошелька</h3>
+        <p style="font-size:14px; color: #4a5568; margin-bottom: 12px;">
+            Подпишите сообщение вашим EVM-кошельком
+        </p>
+        
+        <!-- Кнопки диплинков -->
+        <div style="display: flex; gap: 8px; margin: 12px 0;">
+            <button id="metamaskLink" class="btn btn-primary" style="flex:1; font-size:14px;">
+                🦊 MetaMask
+            </button>
+            <button id="trustLink" class="btn btn-primary" style="flex:1; font-size:14px;">
+                🛡️ Trust
+            </button>
         </div>
+        
+        <label>Сообщение для подписи:</label>
+        <textarea id="messageToSign" readonly rows="4"></textarea>
+        <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
+        <label>Адрес кошелька (0x...):</label>
+        <input type="text" id="walletAddress" placeholder="0x...">
+        <label>Подпись (0x...):</label>
+        <input type="text" id="signature" placeholder="0x...">
+        <div class="modal-buttons">
+            <button class="btn btn-primary" id="confirmBindBtn">✅ Привязать</button>
+            <button class="btn btn-secondary" id="cancelBindBtn">Отмена</button>
+        </div>
+    </div>
+</div>
 
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
@@ -384,6 +386,7 @@ async def miniapp(request: Request):
     var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
     var isTelegram = user ? true : false;
     
+    // Отображаем данные пользователя
     if (user) {
         document.getElementById('avatar').textContent = user.first_name.charAt(0);
         document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
@@ -395,8 +398,10 @@ async def miniapp(request: Request):
         document.getElementById('faBalance').textContent = '100';
     }
 
+    // Загрузка данных
     function loadUserData() {
         if (!isTelegram) return;
+        
         var xhr = new XMLHttpRequest();
         xhr.open('GET', '/api/me', true);
         xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
@@ -416,96 +421,175 @@ async def miniapp(request: Request):
     }
 
     document.getElementById('refreshBtn').onclick = function() {
-        if (isTelegram) { loadUserData(); tg.showAlert('Обновлено'); }
+        if (isTelegram) {
+            loadUserData();
+            tg.showAlert('Данные обновлены');
+        } else {
+            tg.showAlert('Откройте в Telegram');
+        }
     };
+
     loadUserData();
 
-    // === Привязка через MetaMask ===
+    // === Привязка кошелька ===
     var currentNonce = null;
     var currentMessage = '';
 
-    document.getElementById('bindWalletBtn').onclick = async function() {
+    document.getElementById('bindWalletBtn').onclick = function() {
         if (!isTelegram || this.disabled) return;
 
-        this.textContent = '⏳ Получение nonce...';
+        this.textContent = '⏳ Загрузка...';
         this.disabled = true;
 
-        // 1. Получаем nonce
+        // 1. Получаем nonce с сервера
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/wallet/bind/nonce', true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = async function() {
+        xhr.onload = function() {
+            var btn = document.getElementById('bindWalletBtn');
+            btn.textContent = '🔗 Привязать кошелёк';
+            btn.disabled = false;
+
             if (xhr.status === 200) {
                 var data = JSON.parse(xhr.responseText);
                 currentNonce = data.nonce;
                 currentMessage = data.message;
 
-                // 2. Формируем диплинк MetaMask для подписи
-                var encodedMessage = encodeURIComponent(currentMessage);
-                
-                // Пытаемся открыть MetaMask напрямую
-                var deepLink = 'https://metamask.app.link/sign/' + encodedMessage;
-                
-                // Показываем инструкцию и открываем диплинк
-                tg.showAlert('Сейчас откроется MetaMask для подписи.\n\nПосле подписи вы автоматически вернётесь обратно.');
-                
-                // Открываем MetaMask
-                window.location.href = deepLink;
-                
-                // Сохраняем данные в sessionStorage для возврата
-                sessionStorage.setItem('bind_nonce', currentNonce);
-                sessionStorage.setItem('bind_message', currentMessage);
-                sessionStorage.setItem('bind_telegram_id', user.id);
-                
+                // Показываем модальное окно с выбором: диплинк или ручной
+                showBindModal(currentMessage);
             } else {
-                document.getElementById('bindWalletBtn').textContent = '🔗 Привязать кошелёк';
-                document.getElementById('bindWalletBtn').disabled = false;
-                tg.showAlert('Ошибка сервера');
+                tg.showAlert('Ошибка сервера. Попробуйте позже.');
             }
+        };
+        xhr.onerror = function() {
+            var btn = document.getElementById('bindWalletBtn');
+            btn.textContent = '🔗 Привязать кошелёк';
+            btn.disabled = false;
+            tg.showAlert('Нет связи с сервером');
         };
         xhr.send();
     };
 
-    // Проверяем, вернулись ли мы после подписи
-    window.onload = function() {
-        var savedNonce = sessionStorage.getItem('bind_nonce');
-        if (savedNonce && isTelegram) {
-            // Пользователь вернулся после диплинка
-            tg.showAlert('Вставьте подпись из MetaMask:');
-            
-            // Показываем поле для вставки подписи
-            var signature = prompt('Вставьте подпись (0x...):');
-            if (signature) {
-                var wallet = prompt('Вставьте адрес кошелька (0x...):');
-                if (wallet) {
-                    // Отправляем на сервер
-                    var verifyXhr = new XMLHttpRequest();
-                    verifyXhr.open('POST', '/api/wallet/bind/verify', true);
-                    verifyXhr.setRequestHeader('Content-Type', 'application/json');
-                    verifyXhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-                    verifyXhr.onload = function() {
-                        if (verifyXhr.status === 200) {
-                            tg.showAlert('✅ Кошелёк привязан!');
-                            loadUserData();
-                        } else {
-                            tg.showAlert('Ошибка привязки');
-                        }
-                    };
-                    verifyXhr.send(JSON.stringify({
-                        wallet_address: wallet,
-                        signature: signature,
-                        nonce: savedNonce,
-                        message: sessionStorage.getItem('bind_message')
-                    }));
-                    
-                    // Очищаем
-                    sessionStorage.removeItem('bind_nonce');
-                    sessionStorage.removeItem('bind_message');
-                    sessionStorage.removeItem('bind_telegram_id');
-                }
-            }
+    // Функция показа модального окна
+    function showBindModal(message) {
+        var modal = document.getElementById('bindModal');
+        var messageArea = document.getElementById('messageToSign');
+        var walletInput = document.getElementById('walletAddress');
+        var sigInput = document.getElementById('signature');
+        
+        messageArea.value = message;
+        walletInput.value = '';
+        sigInput.value = '';
+        modal.classList.add('active');
+    }
+
+    // Кнопка Отмена
+    document.getElementById('cancelBindBtn').onclick = function() {
+        document.getElementById('bindModal').classList.remove('active');
+    };
+
+    // Кнопка Копировать
+    document.getElementById('copyMessageBtn').onclick = function() {
+        var messageArea = document.getElementById('messageToSign');
+        messageArea.select();
+        document.execCommand('copy');
+        tg.showAlert('✅ Сообщение скопировано!');
+    };
+
+    // Кнопка MetaMask (диплинк)
+    document.getElementById('metamaskLink').onclick = function(e) {
+        e.preventDefault();
+        if (!currentMessage) return;
+        
+        // Кодируем сообщение для диплинка
+        var encodedMessage = encodeURIComponent(currentMessage);
+        
+        // Правильный диплинк MetaMask для подписи
+        var deepLink = 'https://metamask.app.link/sign/' + encodedMessage;
+        
+        // Используем Telegram API для открытия ссылки
+        tg.openLink(deepLink);
+        
+        // Показываем инструкцию
+        setTimeout(function() {
+            tg.showAlert(
+                '1. Подпишите сообщение в MetaMask\n' +
+                '2. Скопируйте подпись (0x...)\n' +
+                '3. Вернитесь сюда и вставьте подпись\n\n' +
+                'Если MetaMask не открылся, скопируйте сообщение вручную.'
+            );
+        }, 1000);
+    };
+
+    // Кнопка Trust Wallet (диплинк)
+    document.getElementById('trustLink').onclick = function(e) {
+        e.preventDefault();
+        if (!currentMessage) return;
+        
+        var encodedMessage = encodeURIComponent(currentMessage);
+        var deepLink = 'https://link.trustwallet.com/sign?message=' + encodedMessage;
+        
+        tg.openLink(deepLink);
+        
+        setTimeout(function() {
+            tg.showAlert(
+                '1. Подпишите сообщение в Trust Wallet\n' +
+                '2. Скопируйте подпись\n' +
+                '3. Вернитесь сюда и вставьте подпись'
+            );
+        }, 1000);
+    };
+
+    // Кнопка Подтвердить привязку
+    document.getElementById('confirmBindBtn').onclick = function() {
+        var wallet = document.getElementById('walletAddress').value.trim();
+        var sig = document.getElementById('signature').value.trim();
+
+        if (!wallet || !sig) {
+            tg.showAlert('Заполните адрес и подпись');
+            return;
         }
+
+        if (!isTelegram) {
+            tg.showAlert('✅ Тестовая привязка!');
+            document.getElementById('bindModal').classList.remove('active');
+            document.getElementById('faBalance').textContent = '1100';
+            return;
+        }
+
+        var btn = this;
+        btn.textContent = '⏳ Отправка...';
+        btn.disabled = true;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/wallet/bind/verify', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+        xhr.onload = function() {
+            btn.textContent = '✅ Привязать';
+            btn.disabled = false;
+
+            if (xhr.status === 200) {
+                tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
+                document.getElementById('bindModal').classList.remove('active');
+                loadUserData();
+            } else {
+                var err = JSON.parse(xhr.responseText);
+                tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
+            }
+        };
+        xhr.onerror = function() {
+            btn.textContent = '✅ Привязать';
+            btn.disabled = false;
+            tg.showAlert('Нет связи с сервером');
+        };
+        xhr.send(JSON.stringify({
+            wallet_address: wallet,
+            signature: sig,
+            nonce: currentNonce,
+            message: currentMessage
+        }));
     };
 </script>
     </body>
