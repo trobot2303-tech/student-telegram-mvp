@@ -296,6 +296,22 @@ async def miniapp(request: Request):
                 resize: vertical;
                 font-family: inherit;
             }
+            .modal-content a.btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px 16px;
+                margin-bottom: 0;
+                border-radius: 12px;
+                font-weight: 600;
+                font-size: 14px;
+                text-decoration: none;
+                transition: all 0.2s ease;
+            }
+            .modal-content a.btn-primary {
+                background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+                color: white;
+            }
             .modal-buttons {
                 display: flex;
                 gap: 10px;
@@ -333,7 +349,18 @@ async def miniapp(request: Request):
         <div class="modal" id="bindModal">
             <div class="modal-content">
                 <h3>🔐 Привязка кошелька</h3>
-                <p>Скопируйте сообщение, подпишите его вашим EVM-кошельком и вставьте адрес и подпись.</p>
+                <p>Выберите кошелёк для быстрой подписи или скопируйте сообщение вручную.</p>
+                
+                <!-- Кнопки диплинков -->
+                <div id="walletDeepLinks" style="display: flex; gap: 8px; margin: 12px 0;">
+                    <a href="#" id="metamaskLink" target="_blank" class="btn btn-primary" style="flex:1; font-size:14px; text-decoration:none; text-align:center;">
+                        🦊 MetaMask
+                    </a>
+                    <a href="#" id="trustLink" target="_blank" class="btn btn-primary" style="flex:1; font-size:14px; text-decoration:none; text-align:center;">
+                        🛡️ Trust Wallet
+                    </a>
+                </div>
+                
                 <label>Сообщение для подписи:</label>
                 <textarea id="messageToSign" readonly rows="4"></textarea>
                 <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
@@ -392,6 +419,11 @@ async def miniapp(request: Request):
             const messageArea = document.getElementById('messageToSign');
             const walletInput = document.getElementById('walletAddress');
             const sigInput = document.getElementById('signature');
+            const metamaskLink = document.getElementById('metamaskLink');
+            const trustLink = document.getElementById('trustLink');
+
+            let currentNonce = null;
+            let currentMessage = '';
 
             bindBtn.addEventListener('click', async () => {
                 if (bindBtn.disabled) return;
@@ -411,6 +443,12 @@ async def miniapp(request: Request):
                     messageArea.value = currentMessage;
                     walletInput.value = '';
                     sigInput.value = '';
+
+                    // Формируем диплинки
+                    const encodedMessage = encodeURIComponent(currentMessage);
+                    metamaskLink.href = `https://metamask.app.link/sign/${encodedMessage}`;
+                    trustLink.href = `https://link.trustwallet.com/sign?message=${encodedMessage}`;
+
                     modal.classList.add('active');
                 } catch(e) {
                     tg.showAlert('Ошибка сети');
@@ -460,9 +498,6 @@ async def miniapp(request: Request):
                     tg.showAlert('Ошибка сети');
                 }
             });
-
-            let currentNonce = null;
-            let currentMessage = '';
         </script>
     </body>
     </html>
