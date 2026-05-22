@@ -377,189 +377,177 @@ async def miniapp(request: Request):
 
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-    const tg = window.Telegram.WebApp;
+    var tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
 
-    const user = tg.initDataUnsafe?.user;
-    const isTelegram = !!user;
+    var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+    var isTelegram = user ? true : false;
     
-    // Отображаем пользователя
+    // Отображаем данные пользователя
     if (user) {
         document.getElementById('avatar').textContent = user.first_name.charAt(0);
         document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
         document.getElementById('username').textContent = user.username ? '@' + user.username : 'ID: ' + user.id;
     } else {
         document.getElementById('avatar').textContent = '👤';
-        document.getElementById('displayName').textContent = 'Демо-студент';
-        document.getElementById('username').textContent = 'тестовый режим';
+        document.getElementById('displayName').textContent = 'Демо';
+        document.getElementById('username').textContent = 'тест';
         document.getElementById('faBalance').textContent = '100';
     }
 
-    // Функция загрузки данных
-    async function loadUserData() {
-        if (!isTelegram) {
-            console.log('Браузерный режим — данные заглушки');
-            return;
-        }
-        try {
-            const res = await fetch('/api/me', { 
-                headers: { 'X-Tg-Init-Data': tg.initData } 
-            });
-            if (res.ok) {
-                const data = await res.json();
+    // Загрузка данных
+    function loadUserData() {
+        if (!isTelegram) return;
+        
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/me', true);
+        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText);
                 document.getElementById('faBalance').textContent = data.fa_balance || 0;
                 if (data.wallet_address) {
-                    const btn = document.getElementById('bindWalletBtn');
+                    var btn = document.getElementById('bindWalletBtn');
                     btn.textContent = '✅ Кошелёк привязан';
-                    btn.disabled = false;
-                    btn.onclick = function() {
-                        tg.showAlert('Кошелёк уже привязан: ' + data.wallet_address);
-                    };
+                    btn.disabled = true;
+                    btn.style.opacity = '0.6';
                 }
             }
-        } catch(e) {
-            console.log('Ошибка загрузки:', e);
-        }
+        };
+        xhr.send();
     }
 
     // Кнопка Обновить
-    document.getElementById('refreshBtn').addEventListener('click', function() {
+    document.getElementById('refreshBtn').onclick = function() {
         if (isTelegram) {
             loadUserData();
-            tg.showAlert('🔄 Данные обновлены');
+            tg.showAlert('Данные обновлены');
         } else {
-            tg.showAlert('📱 Откройте Mini App в Telegram для реальных данных');
+            tg.showAlert('Откройте в Telegram');
         }
-    });
+    };
 
-    // Загружаем данные при старте
     loadUserData();
 
     // === Привязка кошелька ===
-    const modal = document.getElementById('bindModal');
-    const bindBtn = document.getElementById('bindWalletBtn');
-    const cancelBtn = document.getElementById('cancelBindBtn');
-    const confirmBtn = document.getElementById('confirmBindBtn');
-    const copyBtn = document.getElementById('copyMessageBtn');
-    const messageArea = document.getElementById('messageToSign');
-    const walletInput = document.getElementById('walletAddress');
-    const sigInput = document.getElementById('signature');
+    var modal = document.getElementById('bindModal');
+    var bindBtn = document.getElementById('bindWalletBtn');
+    var cancelBtn = document.getElementById('cancelBindBtn');
+    var confirmBtn = document.getElementById('confirmBindBtn');
+    var copyBtn = document.getElementById('copyMessageBtn');
+    var messageArea = document.getElementById('messageToSign');
+    var walletInput = document.getElementById('walletAddress');
+    var sigInput = document.getElementById('signature');
 
-    let currentNonce = null;
-    let currentMessage = '';
+    var currentNonce = null;
+    var currentMessage = '';
 
-    // Кнопка Привязать кошелёк
-    bindBtn.addEventListener('click', async function() {
+    // Кнопка Привязать
+    bindBtn.onclick = function() {
         if (!isTelegram) {
-            // В браузере показываем тестовое модальное окно
-            currentMessage = 'TEST MESSAGE FOR SIGNING\nTelegram ID: 123456789\nNonce: test123\nExpires: 9999999999';
-            currentNonce = 'test_nonce';
-            messageArea.value = currentMessage;
+            messageArea.value = 'TEST MESSAGE';
             walletInput.value = '';
             sigInput.value = '';
             modal.classList.add('active');
             return;
         }
 
-        // В Telegram — реальный запрос
-        try {
-            const res = await fetch('/api/wallet/bind/nonce', {
-                method: 'POST',
-                headers: { 'X-Tg-Init-Data': tg.initData }
-            });
-            if (!res.ok) {
-                const err = await res.json();
-                tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось'));
-                return;
+        // Показываем загрузку
+        bindBtn.textContent = '⏳ Загрузка...';
+        bindBtn.disabled = true;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/wallet/bind/nonce', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+        xhr.onload = function() {
+            bindBtn.textContent = '🔗 Привязать кошелёк';
+            bindBtn.disabled = false;
+            
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText);
+                currentNonce = data.nonce;
+                currentMessage = data.message;
+                messageArea.value = currentMessage;
+                walletInput.value = '';
+                sigInput.value = '';
+                modal.classList.add('active');
+            } else {
+                tg.showAlert('Ошибка сервера. Попробуйте позже.');
             }
-            const data = await res.json();
-            currentNonce = data.nonce;
-            currentMessage = data.message;
-            messageArea.value = currentMessage;
-            walletInput.value = '';
-            sigInput.value = '';
-            modal.classList.add('active');
-        } catch(e) {
-            tg.showAlert('Ошибка сети. Попробуйте позже.');
-        }
-    });
+        };
+        xhr.onerror = function() {
+            bindBtn.textContent = '🔗 Привязать кошелёк';
+            bindBtn.disabled = false;
+            tg.showAlert('Нет связи с сервером');
+        };
+        xhr.send();
+    };
 
     // Кнопка Отмена
-    cancelBtn.addEventListener('click', function() {
+    cancelBtn.onclick = function() {
         modal.classList.remove('active');
-    });
+    };
 
     // Кнопка Копировать
-    copyBtn.addEventListener('click', function() {
+    copyBtn.onclick = function() {
         messageArea.select();
         document.execCommand('copy');
-        tg.showAlert('✅ Сообщение скопировано!');
-    });
+        tg.showAlert('Скопировано!');
+    };
 
-    // Кнопка Подтвердить привязку
-    confirmBtn.addEventListener('click', async function() {
-        const wallet = walletInput.value.trim();
-        const sig = sigInput.value.trim();
+    // Кнопка Привязать (подтверждение)
+    confirmBtn.onclick = function() {
+        var wallet = walletInput.value.trim();
+        var sig = sigInput.value.trim();
 
         if (!wallet || !sig) {
-            tg.showAlert('Заполните адрес и подпись');
+            tg.showAlert('Заполните все поля');
             return;
         }
 
         if (!isTelegram) {
-            // В браузере имитируем успех
-            tg.showAlert('✅ Тестовая привязка успешна! (браузерный режим)');
+            tg.showAlert('✅ Тестовая привязка!');
             modal.classList.remove('active');
-            document.getElementById('bindWalletBtn').textContent = '✅ Кошелёк привязан';
             document.getElementById('faBalance').textContent = '1100';
             return;
         }
 
-        // В Telegram — реальная привязка
-        try {
-            const res = await fetch('/api/wallet/bind/verify', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Tg-Init-Data': tg.initData
-                },
-                body: JSON.stringify({
-                    wallet_address: wallet,
-                    signature: sig,
-                    nonce: currentNonce,
-                    message: currentMessage
-                })
-            });
-            if (!res.ok) {
-                const err = await res.json();
-                tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
-                return;
+        confirmBtn.textContent = '⏳ Отправка...';
+        confirmBtn.disabled = true;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/wallet/bind/verify', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+        xhr.onload = function() {
+            confirmBtn.textContent = '✅ Привязать';
+            confirmBtn.disabled = false;
+            
+            if (xhr.status === 200) {
+                tg.showAlert('✅ Кошелёк привязан!');
+                modal.classList.remove('active');
+                loadUserData();
+            } else {
+                var err = JSON.parse(xhr.responseText);
+                tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось'));
             }
-            tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
-            modal.classList.remove('active');
-            loadUserData();
-        } catch(e) {
-            tg.showAlert('Ошибка сети');
-        }
-    });
-
-    // Диплинки для кошельков
-    document.getElementById('metamaskLink').addEventListener('click', function(e) {
-        e.preventDefault();
-        if (currentMessage) {
-            const encoded = encodeURIComponent(currentMessage);
-            window.open('https://metamask.app.link/sign/' + encoded, '_blank');
-        }
-    });
-
-    document.getElementById('trustLink').addEventListener('click', function(e) {
-        e.preventDefault();
-        if (currentMessage) {
-            const encoded = encodeURIComponent(currentMessage);
-            window.open('https://link.trustwallet.com/sign?message=' + encoded, '_blank');
-        }
-    });
+        };
+        xhr.onerror = function() {
+            confirmBtn.textContent = '✅ Привязать';
+            confirmBtn.disabled = false;
+            tg.showAlert('Нет связи с сервером');
+        };
+        
+        var body = JSON.stringify({
+            wallet_address: wallet,
+            signature: sig,
+            nonce: currentNonce,
+            message: currentMessage
+        });
+        xhr.send(body);
+    };
 </script>
     </body>
     </html>
