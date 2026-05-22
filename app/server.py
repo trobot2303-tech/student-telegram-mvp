@@ -103,7 +103,7 @@ async def health() -> dict:
 
 
 
-    @app.get("/miniapp", response_class=HTMLResponse)
+@app.get("/miniapp", response_class=HTMLResponse)
 async def miniapp(request: Request):
     return HTMLResponse("""
     <!DOCTYPE html>
