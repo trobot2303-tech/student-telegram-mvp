@@ -445,9 +445,13 @@ async def miniapp(request: Request):
                     sigInput.value = '';
 
                     // Формируем диплинки
-                    const encodedMessage = encodeURIComponent(currentMessage);
-                    metamaskLink.href = `https://metamask.app.link/sign/${encodedMessage}`;
-                    trustLink.href = `https://link.trustwallet.com/sign?message=${encodedMessage}`;
+                        const encodedMessage = encodeURIComponent(currentMessage);
+                        // MetaMask: используем универсальную ссылку для подписи
+                        metamaskLink.href = `https://metamask.app.link/sign/${encodedMessage}`;
+                        // Альтернатива для MetaMask (если первая не работает)
+                        // metamaskLink.href = `ethereum:0x0?message=${encodedMessage}`;
+                        // Trust Wallet
+                        trustLink.href = `https://link.trustwallet.com/sign?message=${encodedMessage}`;
 
                     modal.classList.add('active');
                 } catch(e) {
