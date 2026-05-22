@@ -11,12 +11,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db import engine, get_session
 from app.models import AuditLog, Base, Nonce, Profile, User, WalletBinding
 from app.security import new_nonce, parse_init_data_user, verify_evm_signature
 from app.settings import get_settings
-from sqlalchemy.orm import selectinload
+
 logger = logging.getLogger("student_mvp")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -63,12 +64,12 @@ async def get_current_user(
     tg_user = parse_init_data_user(x_tg_init_data, settings.telegram_bot_token)
     if not tg_user:
         raise HTTPException(status_code=401, detail="Invalid initData")
+
     res = await session.execute(
-    select(User)
-    .where(User.telegram_id == tg_user.id)
-    .options(selectinload(User.wallet), selectinload(User.profile))
-)
-    
+        select(User)
+        .where(User.telegram_id == tg_user.id)
+        .options(selectinload(User.wallet), selectinload(User.profile))
+    )
     user = res.scalar_one_or_none()
     if not user:
         user = User(
@@ -95,7 +96,7 @@ async def on_startup() -> None:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("API started")
 
-    # Если нужно автоматически запускать бота – раскомментируйте строки ниже
+    # Запускаем бота в фоне
     from app.telegram_bot import start_bot
     asyncio.create_task(start_bot())
     logger.info("Bot polling started in background")
@@ -104,7 +105,6 @@ async def on_startup() -> None:
 @app.get("/health")
 async def health() -> dict:
     return {"ok": True}
-
 
 
 @app.get("/miniapp", response_class=HTMLResponse)
@@ -161,18 +161,8 @@ async def miniapp(request: Request):
                 box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
                 text-transform: uppercase;
             }
-            h2 {
-                font-size: 24px;
-                font-weight: 700;
-                margin-bottom: 4px;
-                color: #1a202c;
-            }
-            .username {
-                font-size: 14px;
-                color: #718096;
-                margin-bottom: 24px;
-                font-weight: 500;
-            }
+            h2 { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: #1a202c; }
+            .username { font-size: 14px; color: #718096; margin-bottom: 24px; font-weight: 500; }
             .balance-block {
                 background: white;
                 border-radius: 16px;
@@ -183,13 +173,7 @@ async def miniapp(request: Request):
                 justify-content: space-between;
                 align-items: center;
             }
-            .balance-label {
-                font-size: 12px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: #a0aec0;
-            }
+            .balance-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #a0aec0; }
             .balance-value {
                 font-size: 32px;
                 font-weight: 700;
@@ -218,25 +202,10 @@ async def miniapp(request: Request):
                 color: white;
                 box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
             }
-            .btn-primary:active {
-                transform: scale(0.98);
-            }
-            .btn-secondary {
-                background: white;
-                color: #4a5568;
-                border: 2px solid #e2e8f0;
-            }
-            .footer {
-                margin-top: 16px;
-                font-size: 13px;
-                color: #a0aec0;
-            }
-            .footer a {
-                color: #667eea;
-                text-decoration: none;
-                font-weight: 500;
-            }
-            /* Модальное окно */
+            .btn-primary:active { transform: scale(0.98); }
+            .btn-secondary { background: white; color: #4a5568; border: 2px solid #e2e8f0; }
+            .footer { margin-top: 16px; font-size: 13px; color: #a0aec0; }
+            .footer a { color: #667eea; text-decoration: none; font-weight: 500; }
             .modal {
                 display: none;
                 position: fixed;
@@ -251,9 +220,7 @@ async def miniapp(request: Request):
                 align-items: center;
                 padding: 20px;
             }
-            .modal.active {
-                display: flex;
-            }
+            .modal.active { display: flex; }
             .modal-content {
                 background: white;
                 border-radius: 24px;
@@ -264,20 +231,9 @@ async def miniapp(request: Request):
                 text-align: left;
                 color: #1a202c;
             }
-            .modal-content h3 {
-                font-size: 20px;
-                margin-bottom: 12px;
-            }
-            .modal-content label {
-                display: block;
-                font-size: 13px;
-                font-weight: 600;
-                color: #2d3748;
-                margin-bottom: 4px;
-                margin-top: 12px;
-            }
-            .modal-content textarea,
-            .modal-content input {
+            .modal-content h3 { font-size: 20px; margin-bottom: 12px; }
+            .modal-content label { display: block; font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 4px; margin-top: 12px; }
+            .modal-content textarea, .modal-content input {
                 width: 100%;
                 padding: 12px;
                 border-radius: 12px;
@@ -288,15 +244,8 @@ async def miniapp(request: Request):
                 resize: vertical;
                 font-family: inherit;
             }
-            .modal-buttons {
-                display: flex;
-                gap: 10px;
-                margin-top: 24px;
-            }
-            .modal-buttons .btn {
-                flex: 1;
-                margin-bottom: 0;
-            }
+            .modal-buttons { display: flex; gap: 10px; margin-top: 24px; }
+            .modal-buttons .btn { flex: 1; margin-bottom: 0; }
         </style>
     </head>
     <body>
@@ -325,7 +274,7 @@ async def miniapp(request: Request):
         <div class="modal" id="bindModal">
             <div class="modal-content">
                 <h3>🔐 Привязка кошелька</h3>
-                <p style="font-size:14px; color: #4a5568; margin-bottom: 16px;">
+                <p style="font-size:14px; color:#4a5568; margin-bottom:16px;">
                     Скопируйте сообщение, подпишите его в вашем EVM-кошельке (MetaMask, Trust Wallet и др.) и вставьте адрес и подпись ниже.
                 </p>
                 <label>Сообщение для подписи:</label>
@@ -351,17 +300,14 @@ async def miniapp(request: Request):
             var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
             var isTelegram = user ? true : false;
             
-            // Отображаем данные пользователя
             if (user) {
                 document.getElementById('avatar').textContent = user.first_name.charAt(0);
                 document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
                 document.getElementById('username').textContent = user.username ? '@' + user.username : 'ID: ' + user.id;
             }
 
-            // Загрузка данных
             function loadUserData() {
                 if (!isTelegram) return;
-                
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET', '/api/me', true);
                 xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
@@ -380,37 +326,30 @@ async def miniapp(request: Request):
                 xhr.send();
             }
 
-            // Кнопка Обновить
             document.getElementById('refreshBtn').onclick = function() {
                 if (isTelegram) {
                     loadUserData();
                     tg.showAlert('Данные обновлены');
                 }
             };
-
             loadUserData();
 
-            // Привязка кошелька
             var modal = document.getElementById('bindModal');
             var currentNonce = null;
             var currentMessage = '';
 
-            // Кнопка Привязать
             document.getElementById('bindWalletBtn').onclick = function() {
                 if (!isTelegram || this.disabled) return;
-
-                this.textContent = 'Загрузка...';
-                this.disabled = true;
-
+                var btn = this;
+                btn.textContent = 'Загрузка...';
+                btn.disabled = true;
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/wallet/bind/nonce', true);
                 xhr.setRequestHeader('Content-Type', 'application/json');
                 xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
                 xhr.onload = function() {
-                    var btn = document.getElementById('bindWalletBtn');
                     btn.textContent = '🔗 Привязать кошелёк';
                     btn.disabled = false;
-
                     if (xhr.status === 200) {
                         var data = JSON.parse(xhr.responseText);
                         currentNonce = data.nonce;
@@ -424,7 +363,6 @@ async def miniapp(request: Request):
                     }
                 };
                 xhr.onerror = function() {
-                    var btn = document.getElementById('bindWalletBtn');
                     btn.textContent = '🔗 Привязать кошелёк';
                     btn.disabled = false;
                     tg.showAlert('Нет связи с сервером');
@@ -432,32 +370,26 @@ async def miniapp(request: Request):
                 xhr.send();
             };
 
-            // Кнопка Отмена
             document.getElementById('cancelBindBtn').onclick = function() {
                 modal.classList.remove('active');
             };
 
-            // Кнопка Копировать
             document.getElementById('copyMessageBtn').onclick = function() {
                 document.getElementById('messageToSign').select();
                 document.execCommand('copy');
                 tg.showAlert('Сообщение скопировано!');
             };
 
-            // Кнопка Привязать (подтверждение)
             document.getElementById('confirmBindBtn').onclick = function() {
                 var wallet = document.getElementById('walletAddress').value.trim();
                 var sig = document.getElementById('signature').value.trim();
-
                 if (!wallet || !sig) {
                     tg.showAlert('Заполните все поля');
                     return;
                 }
-
                 var btn = this;
                 btn.textContent = 'Отправка...';
                 btn.disabled = true;
-
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/wallet/bind/verify', true);
                 xhr.setRequestHeader('Content-Type', 'application/json');
@@ -465,7 +397,6 @@ async def miniapp(request: Request):
                 xhr.onload = function() {
                     btn.textContent = '✅ Привязать';
                     btn.disabled = false;
-
                     if (xhr.status === 200) {
                         tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
                         modal.classList.remove('active');
@@ -488,6 +419,57 @@ async def miniapp(request: Request):
                 }));
             };
         </script>
+    </body>
+    </html>
+    """)
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy(request: Request) -> HTMLResponse:
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Политика конфиденциальности</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background: var(--tg-theme-bg-color, #f5f5f5);
+                color: var(--tg-theme-text-color, #222);
+                padding: 20px;
+                max-width: 600px;
+                margin: 0 auto;
+                line-height: 1.6;
+            }
+            h1 { font-size: 24px; margin-bottom: 16px; }
+            h2 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; }
+            p { margin-bottom: 12px; }
+            a { color: var(--tg-theme-link-color, #2AABEE); }
+        </style>
+    </head>
+    <body>
+        <h1>Политика конфиденциальности</h1>
+        <p><strong>Дата последнего обновления:</strong> 23 апреля 2026 г.</p>
+
+        <h2>1. Какие данные мы собираем</h2>
+        <p>При использовании Mini App мы получаем ваш Telegram ID, имя, фамилию и username (если есть) через официальное API Telegram. Эти данные необходимы для функционирования личного кабинета и привязки кошелька.</p>
+        <p>При привязке EVM-кошелька мы сохраняем ваш публичный адрес и историю подписанных сообщений (nonce) для верификации.</p>
+
+        <h2>2. Как мы используем данные</h2>
+        <p>Данные используются исключительно в рамках сервиса: отображение профиля, учёт баланса FA-токенов, отправка уведомлений через бота, выполнение действий, запрошенных пользователем (привязка кошелька, обратная связь).</p>
+
+        <h2>3. Передача данных третьим лицам</h2>
+        <p>Мы не передаём ваши данные третьим лицам, за исключением случаев, предусмотренных законодательством.</p>
+
+        <h2>4. Хранение данных</h2>
+        <p>Данные хранятся в базе данных SQLite на сервере. Вы можете запросить удаление своих данных, написав администратору через бота.</p>
+
+        <h2>5. Контакты</h2>
+        <p>По вопросам конфиденциальности обращайтесь к администратору через Telegram-бота @FA2303bot.</p>
+
+        <p><a href="/miniapp">← Назад в личный кабинет</a></p>
     </body>
     </html>
     """)
@@ -561,12 +543,12 @@ async def wallet_bind_verify(
         raise HTTPException(status_code=400, detail="wallet_address, signature, nonce, message are required")
 
     res = await session.execute(
-    select(Nonce).where(
-        Nonce.user_id == user.id,
-        Nonce.nonce == nonce_value,
-        Nonce.purpose == "bind_wallet",
-    ).options(selectinload(Nonce.user))
-)
+        select(Nonce).where(
+            Nonce.user_id == user.id,
+            Nonce.nonce == nonce_value,
+            Nonce.purpose == "bind_wallet",
+        )
+    )
     nonce_row = res.scalar_one_or_none()
     if not nonce_row or nonce_row.expires_at.replace(tzinfo=UTC) < _now_utc():
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "nonce_invalid_or_expired"})
@@ -579,11 +561,7 @@ async def wallet_bind_verify(
         raise HTTPException(status_code=400, detail="Signature invalid")
 
     # ensure wallet isn't already bound to someone else
-    res2 = await session.execute(
-    select(WalletBinding)
-    .where(WalletBinding.wallet_address == wallet_address)
-    .options(selectinload(WalletBinding.user))
-)
+    res2 = await session.execute(select(WalletBinding).where(WalletBinding.wallet_address == wallet_address))
     existing = res2.scalar_one_or_none()
     if existing and existing.user_id != user.id:
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "wallet_already_bound"})
