@@ -376,133 +376,164 @@ async def miniapp(request: Request):
         </div>
 
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
-        <script>
-            const tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand();
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
 
-            const user = tg.initDataUnsafe?.user;
-            if (user) {
-                document.getElementById('avatar').textContent = user.first_name.charAt(0);
-                document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
-                document.getElementById('username').textContent = user.username ? '@' + user.username : '';
-            }
+    const user = tg.initDataUnsafe?.user;
+    if (user) {
+        document.getElementById('avatar').textContent = user.first_name.charAt(0);
+        document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+        document.getElementById('username').textContent = user.username ? '@' + user.username : '';
+    }
 
-            async function loadUserData() {
-                try {
-                    const res = await fetch('/api/me', { headers: { 'X-Tg-Init-Data': tg.initData } });
-                    if (res.ok) {
-                        const data = await res.json();
-                        document.getElementById('faBalance').textContent = data.fa_balance || 0;
-                        if (data.wallet_address) {
-                            const btn = document.getElementById('bindWalletBtn');
-                            btn.textContent = '✅ Кошелёк привязан';
-                            btn.disabled = true;
-                            btn.classList.remove('btn-primary');
-                            btn.classList.add('btn-secondary');
-                        }
-                    }
-                } catch(e) {
-                    console.log('Ошибка загрузки данных', e);
+    async function loadUserData() {
+        try {
+            const res = await fetch('/api/me', { headers: { 'X-Tg-Init-Data': tg.initData } });
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('faBalance').textContent = data.fa_balance || 0;
+                if (data.wallet_address) {
+                    const btn = document.getElementById('bindWalletBtn');
+                    btn.textContent = '✅ Кошелёк привязан';
+                    btn.disabled = true;
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-secondary');
                 }
             }
+        } catch(e) {
+            console.log('Ошибка загрузки данных', e);
+        }
+    }
 
-            document.getElementById('refreshBtn').addEventListener('click', loadUserData);
+    document.getElementById('refreshBtn').addEventListener('click', loadUserData);
+    loadUserData();
+
+    // Привязка кошелька
+    const modal = document.getElementById('bindModal');
+    const bindBtn = document.getElementById('bindWalletBtn');
+    const cancelBtn = document.getElementById('cancelBindBtn');
+    const confirmBtn = document.getElementById('confirmBindBtn');
+    const copyBtn = document.getElementById('copyMessageBtn');
+    const messageArea = document.getElementById('messageToSign');
+    const walletInput = document.getElementById('walletAddress');
+    const sigInput = document.getElementById('signature');
+    const metamaskLink = document.getElementById('metamaskLink');
+    const trustLink = document.getElementById('trustLink');
+
+    let currentNonce = null;
+    let currentMessage = '';
+
+    // Функция для открытия кошелька
+    function openWallet(walletType) {
+        const encodedMessage = encodeURIComponent(currentMessage);
+        let deepLink = '';
+        
+        if (walletType === 'metamask') {
+            // Пробуем несколько форматов диплинков
+            const links = [
+                `https://metamask.app.link/sign/${encodedMessage}`,
+                `metamask://sign?message=${encodedMessage}`,
+                `dapp://sign?message=${encodedMessage}`
+            ];
+            // Пробуем открыть первый, если не сработает - предложим ручной метод
+            window.location.href = links[0];
+            setTimeout(() => {
+                tg.showAlert('Если MetaMask не открылся, скопируйте сообщение и подпишите вручную.\n\n1. Откройте MetaMask\n2. Нажмите "Sign Message"\n3. Вставьте сообщение\n4. Скопируйте подпись');
+            }, 1000);
+        } else if (walletType === 'trustwallet') {
+            const links = [
+                `https://link.trustwallet.com/sign?message=${encodedMessage}`,
+                `trust://sign?message=${encodedMessage}`
+            ];
+            window.location.href = links[0];
+            setTimeout(() => {
+                tg.showAlert('Если Trust Wallet не открылся, скопируйте сообщение и подпишите вручную.');
+            }, 1000);
+        }
+    }
+
+    bindBtn.addEventListener('click', async () => {
+        if (bindBtn.disabled) return;
+        try {
+            const res = await fetch('/api/wallet/bind/nonce', {
+                method: 'POST',
+                headers: { 'X-Tg-Init-Data': tg.initData }
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось получить nonce'));
+                return;
+            }
+            const data = await res.json();
+            currentNonce = data.nonce;
+            currentMessage = data.message;
+            messageArea.value = currentMessage;
+            walletInput.value = '';
+            sigInput.value = '';
+
+            // Настраиваем кнопки
+            metamaskLink.onclick = function(e) {
+                e.preventDefault();
+                openWallet('metamask');
+            };
+            
+            trustLink.onclick = function(e) {
+                e.preventDefault();
+                openWallet('trustwallet');
+            };
+
+            modal.classList.add('active');
+        } catch(e) {
+            tg.showAlert('Ошибка сети');
+        }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+
+    copyBtn.addEventListener('click', () => {
+        messageArea.select();
+        document.execCommand('copy');
+        tg.showAlert('✅ Сообщение скопировано! Откройте кошелёк и подпишите его.');
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+        const wallet = walletInput.value.trim();
+        const sig = sigInput.value.trim();
+        if (!wallet || !sig || !currentNonce || !currentMessage) {
+            tg.showAlert('Заполните все поля');
+            return;
+        }
+        try {
+            const res = await fetch('/api/wallet/bind/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Tg-Init-Data': tg.initData
+                },
+                body: JSON.stringify({
+                    wallet_address: wallet,
+                    signature: sig,
+                    nonce: currentNonce,
+                    message: currentMessage
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
+                return;
+            }
+            tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
+            modal.classList.remove('active');
             loadUserData();
-
-            // Привязка кошелька
-            const modal = document.getElementById('bindModal');
-            const bindBtn = document.getElementById('bindWalletBtn');
-            const cancelBtn = document.getElementById('cancelBindBtn');
-            const confirmBtn = document.getElementById('confirmBindBtn');
-            const copyBtn = document.getElementById('copyMessageBtn');
-            const messageArea = document.getElementById('messageToSign');
-            const walletInput = document.getElementById('walletAddress');
-            const sigInput = document.getElementById('signature');
-            const metamaskLink = document.getElementById('metamaskLink');
-            const trustLink = document.getElementById('trustLink');
-
-            let currentNonce = null;
-            let currentMessage = '';
-
-            bindBtn.addEventListener('click', async () => {
-                if (bindBtn.disabled) return;
-                try {
-                    const res = await fetch('/api/wallet/bind/nonce', {
-                        method: 'POST',
-                        headers: { 'X-Tg-Init-Data': tg.initData }
-                    });
-                    if (!res.ok) {
-                        const err = await res.json();
-                        tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось получить nonce'));
-                        return;
-                    }
-                    const data = await res.json();
-                    currentNonce = data.nonce;
-                    currentMessage = data.message;
-                    messageArea.value = currentMessage;
-                    walletInput.value = '';
-                    sigInput.value = '';
-
-                    // Формируем диплинки
-                        const encodedMessage = encodeURIComponent(currentMessage);
-                        // MetaMask: используем универсальную ссылку для подписи
-                        metamaskLink.href = `https://metamask.app.link/sign/${encodedMessage}`;
-                        // Альтернатива для MetaMask (если первая не работает)
-                        // metamaskLink.href = `ethereum:0x0?message=${encodedMessage}`;
-                        // Trust Wallet
-                        trustLink.href = `https://link.trustwallet.com/sign?message=${encodedMessage}`;
-
-                    modal.classList.add('active');
-                } catch(e) {
-                    tg.showAlert('Ошибка сети');
-                }
-            });
-
-            cancelBtn.addEventListener('click', () => {
-                modal.classList.remove('active');
-            });
-
-            copyBtn.addEventListener('click', () => {
-                messageArea.select();
-                document.execCommand('copy');
-                tg.showAlert('Сообщение скопировано!');
-            });
-
-            confirmBtn.addEventListener('click', async () => {
-                const wallet = walletInput.value.trim();
-                const sig = sigInput.value.trim();
-                if (!wallet || !sig || !currentNonce || !currentMessage) {
-                    tg.showAlert('Заполните все поля');
-                    return;
-                }
-                try {
-                    const res = await fetch('/api/wallet/bind/verify', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Tg-Init-Data': tg.initData
-                        },
-                        body: JSON.stringify({
-                            wallet_address: wallet,
-                            signature: sig,
-                            nonce: currentNonce,
-                            message: currentMessage
-                        })
-                    });
-                    if (!res.ok) {
-                        const err = await res.json();
-                        tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
-                        return;
-                    }
-                    tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
-                    modal.classList.remove('active');
-                    loadUserData();
-                } catch(e) {
-                    tg.showAlert('Ошибка сети');
-                }
-            });
-        </script>
+        } catch(e) {
+            tg.showAlert('Ошибка сети');
+        }
+    });
+</script>
     </body>
     </html>
     """)
