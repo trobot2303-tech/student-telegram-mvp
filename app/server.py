@@ -384,7 +384,6 @@ async def miniapp(request: Request):
     var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
     var isTelegram = user ? true : false;
     
-    // Отображаем данные пользователя
     if (user) {
         document.getElementById('avatar').textContent = user.first_name.charAt(0);
         document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
@@ -396,10 +395,8 @@ async def miniapp(request: Request):
         document.getElementById('faBalance').textContent = '100';
     }
 
-    // Загрузка данных
     function loadUserData() {
         if (!isTelegram) return;
-        
         var xhr = new XMLHttpRequest();
         xhr.open('GET', '/api/me', true);
         xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
@@ -418,135 +415,97 @@ async def miniapp(request: Request):
         xhr.send();
     }
 
-    // Кнопка Обновить
     document.getElementById('refreshBtn').onclick = function() {
-        if (isTelegram) {
-            loadUserData();
-            tg.showAlert('Данные обновлены');
-        } else {
-            tg.showAlert('Откройте в Telegram');
-        }
+        if (isTelegram) { loadUserData(); tg.showAlert('Обновлено'); }
     };
-
     loadUserData();
 
-    // === Привязка кошелька ===
-    var modal = document.getElementById('bindModal');
-    var bindBtn = document.getElementById('bindWalletBtn');
-    var cancelBtn = document.getElementById('cancelBindBtn');
-    var confirmBtn = document.getElementById('confirmBindBtn');
-    var copyBtn = document.getElementById('copyMessageBtn');
-    var messageArea = document.getElementById('messageToSign');
-    var walletInput = document.getElementById('walletAddress');
-    var sigInput = document.getElementById('signature');
-
+    // === Привязка через MetaMask ===
     var currentNonce = null;
     var currentMessage = '';
 
-    // Кнопка Привязать
-    bindBtn.onclick = function() {
-        if (!isTelegram) {
-            messageArea.value = 'TEST MESSAGE';
-            walletInput.value = '';
-            sigInput.value = '';
-            modal.classList.add('active');
-            return;
-        }
+    document.getElementById('bindWalletBtn').onclick = async function() {
+        if (!isTelegram || this.disabled) return;
 
-        // Показываем загрузку
-        bindBtn.textContent = '⏳ Загрузка...';
-        bindBtn.disabled = true;
+        this.textContent = '⏳ Получение nonce...';
+        this.disabled = true;
 
+        // 1. Получаем nonce
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/wallet/bind/nonce', true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = function() {
-            bindBtn.textContent = '🔗 Привязать кошелёк';
-            bindBtn.disabled = false;
-            
+        xhr.onload = async function() {
             if (xhr.status === 200) {
                 var data = JSON.parse(xhr.responseText);
                 currentNonce = data.nonce;
                 currentMessage = data.message;
-                messageArea.value = currentMessage;
-                walletInput.value = '';
-                sigInput.value = '';
-                modal.classList.add('active');
+
+                // 2. Формируем диплинк MetaMask для подписи
+                var encodedMessage = encodeURIComponent(currentMessage);
+                
+                // Пытаемся открыть MetaMask напрямую
+                var deepLink = 'https://metamask.app.link/sign/' + encodedMessage;
+                
+                // Показываем инструкцию и открываем диплинк
+                tg.showAlert('Сейчас откроется MetaMask для подписи.\n\nПосле подписи вы автоматически вернётесь обратно.');
+                
+                // Открываем MetaMask
+                window.location.href = deepLink;
+                
+                // Сохраняем данные в sessionStorage для возврата
+                sessionStorage.setItem('bind_nonce', currentNonce);
+                sessionStorage.setItem('bind_message', currentMessage);
+                sessionStorage.setItem('bind_telegram_id', user.id);
+                
             } else {
-                tg.showAlert('Ошибка сервера. Попробуйте позже.');
+                document.getElementById('bindWalletBtn').textContent = '🔗 Привязать кошелёк';
+                document.getElementById('bindWalletBtn').disabled = false;
+                tg.showAlert('Ошибка сервера');
             }
-        };
-        xhr.onerror = function() {
-            bindBtn.textContent = '🔗 Привязать кошелёк';
-            bindBtn.disabled = false;
-            tg.showAlert('Нет связи с сервером');
         };
         xhr.send();
     };
 
-    // Кнопка Отмена
-    cancelBtn.onclick = function() {
-        modal.classList.remove('active');
-    };
-
-    // Кнопка Копировать
-    copyBtn.onclick = function() {
-        messageArea.select();
-        document.execCommand('copy');
-        tg.showAlert('Скопировано!');
-    };
-
-    // Кнопка Привязать (подтверждение)
-    confirmBtn.onclick = function() {
-        var wallet = walletInput.value.trim();
-        var sig = sigInput.value.trim();
-
-        if (!wallet || !sig) {
-            tg.showAlert('Заполните все поля');
-            return;
-        }
-
-        if (!isTelegram) {
-            tg.showAlert('✅ Тестовая привязка!');
-            modal.classList.remove('active');
-            document.getElementById('faBalance').textContent = '1100';
-            return;
-        }
-
-        confirmBtn.textContent = '⏳ Отправка...';
-        confirmBtn.disabled = true;
-
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/wallet/bind/verify', true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = function() {
-            confirmBtn.textContent = '✅ Привязать';
-            confirmBtn.disabled = false;
+    // Проверяем, вернулись ли мы после подписи
+    window.onload = function() {
+        var savedNonce = sessionStorage.getItem('bind_nonce');
+        if (savedNonce && isTelegram) {
+            // Пользователь вернулся после диплинка
+            tg.showAlert('Вставьте подпись из MetaMask:');
             
-            if (xhr.status === 200) {
-                tg.showAlert('✅ Кошелёк привязан!');
-                modal.classList.remove('active');
-                loadUserData();
-            } else {
-                var err = JSON.parse(xhr.responseText);
-                tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось'));
+            // Показываем поле для вставки подписи
+            var signature = prompt('Вставьте подпись (0x...):');
+            if (signature) {
+                var wallet = prompt('Вставьте адрес кошелька (0x...):');
+                if (wallet) {
+                    // Отправляем на сервер
+                    var verifyXhr = new XMLHttpRequest();
+                    verifyXhr.open('POST', '/api/wallet/bind/verify', true);
+                    verifyXhr.setRequestHeader('Content-Type', 'application/json');
+                    verifyXhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+                    verifyXhr.onload = function() {
+                        if (verifyXhr.status === 200) {
+                            tg.showAlert('✅ Кошелёк привязан!');
+                            loadUserData();
+                        } else {
+                            tg.showAlert('Ошибка привязки');
+                        }
+                    };
+                    verifyXhr.send(JSON.stringify({
+                        wallet_address: wallet,
+                        signature: signature,
+                        nonce: savedNonce,
+                        message: sessionStorage.getItem('bind_message')
+                    }));
+                    
+                    // Очищаем
+                    sessionStorage.removeItem('bind_nonce');
+                    sessionStorage.removeItem('bind_message');
+                    sessionStorage.removeItem('bind_telegram_id');
+                }
             }
-        };
-        xhr.onerror = function() {
-            confirmBtn.textContent = '✅ Привязать';
-            confirmBtn.disabled = false;
-            tg.showAlert('Нет связи с сервером');
-        };
-        
-        var body = JSON.stringify({
-            wallet_address: wallet,
-            signature: sig,
-            nonce: currentNonce,
-            message: currentMessage
-        });
-        xhr.send(body);
+        }
     };
 </script>
     </body>
