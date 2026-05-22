@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime, timedelta
 
+import aiohttp
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -33,6 +35,21 @@ async def _audit(session: AsyncSession, telegram_id: int | None, event: str, det
             details=json.dumps(details, ensure_ascii=False) if details is not None else None,
         )
     )
+
+
+async def send_telegram_message(chat_id: int, text: str) -> bool:
+    """Отправляет сообщение через Telegram Bot API. Возвращает True в случае успеха."""
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                return resp.status == 200
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+        return False
 
 
 async def get_current_user(
@@ -74,6 +91,11 @@ async def on_startup() -> None:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("API started")
 
+    # Если нужно автоматически запускать бота – раскомментируйте строки ниже
+    from app.telegram_bot import start_bot
+    asyncio.create_task(start_bot())
+    logger.info("Bot polling started in background")
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -89,77 +111,133 @@ async def miniapp(request: Request):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
         <title>Личный кабинет</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                background: var(--tg-theme-bg-color, #f5f5f5);
-                color: var(--tg-theme-text-color, #222);
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                min-height: 100vh;
-                padding: 16px;
+                padding: 20px;
+                margin: 0;
             }
             .card {
                 width: 100%;
-                max-width: 380px;
-                background: var(--tg-theme-section-bg-color, #fff);
-                border-radius: 18px;
-                padding: 24px 20px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                max-width: 400px;
+                background: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(10px);
+                border-radius: 24px;
+                padding: 32px 24px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
                 text-align: center;
+                animation: fadeInUp 0.5s ease-out;
+            }
+            @keyframes fadeInUp {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             .avatar {
-                width: 72px;
-                height: 72px;
+                width: 80px;
+                height: 80px;
                 border-radius: 50%;
-                background: var(--tg-theme-button-color, #2AABEE);
+                background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
                 color: #fff;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 32px;
-                font-weight: bold;
-                margin: 0 auto 12px;
+                font-size: 36px;
+                font-weight: 700;
+                margin: 0 auto 16px;
+                box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
                 text-transform: uppercase;
             }
-            h2 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
-            .username { color: var(--tg-theme-hint-color, #999); font-size: 14px; margin-bottom: 20px; }
+            h2 {
+                font-size: 24px;
+                font-weight: 700;
+                margin-bottom: 4px;
+                color: #1a202c;
+            }
+            .username {
+                font-size: 14px;
+                color: #718096;
+                margin-bottom: 24px;
+                font-weight: 500;
+            }
             .balance-block {
-                background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-                border-radius: 14px;
-                padding: 16px;
-                margin-bottom: 20px;
+                background: white;
+                border-radius: 16px;
+                padding: 20px;
+                margin-bottom: 24px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
             }
-            .balance-label { font-size: 13px; color: var(--tg-theme-hint-color, #999); text-transform: uppercase; letter-spacing: 0.5px; }
-            .balance-value { font-size: 28px; font-weight: 700; }
+            .balance-label {
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #a0aec0;
+            }
+            .balance-value {
+                font-size: 32px;
+                font-weight: 700;
+                background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
             .btn {
-                display: block;
                 width: 100%;
-                padding: 14px 16px;
-                margin-bottom: 10px;
-                border-radius: 12px;
+                padding: 16px 20px;
+                margin-bottom: 12px;
+                border-radius: 16px;
                 border: none;
                 font-size: 16px;
                 font-weight: 600;
                 cursor: pointer;
-                transition: opacity 0.15s;
+                transition: all 0.2s ease;
+                font-family: inherit;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            .btn-primary {
+                background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+                color: white;
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            }
+            .btn-primary:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
+            }
+            .btn-primary:active {
+                transform: scale(0.98);
+            }
+            .btn-secondary {
+                background: white;
+                color: #4a5568;
+                border: 2px solid #e2e8f0;
+            }
+            .btn-secondary:hover {
+                background: #f7fafc;
+            }
+            .footer {
+                margin-top: 16px;
+                font-size: 13px;
+                color: #a0aec0;
+            }
+            .footer a {
+                color: #667eea;
                 text-decoration: none;
-                color: #fff;
-                background: var(--tg-theme-button-color, #2AABEE);
+                font-weight: 500;
             }
-            .btn:active { opacity: 0.8; }
-            .btn-outline {
-                background: transparent;
-                color: var(--tg-theme-button-color, #2AABEE);
-                border: 2px solid var(--tg-theme-button-color, #2AABEE);
-            }
-            .footer { margin-top: 16px; font-size: 12px; color: var(--tg-theme-hint-color, #999); }
-
             /* Модальное окно */
             .modal {
                 display: none;
@@ -169,32 +247,64 @@ async def miniapp(request: Request):
                 top: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0,0,0,0.5);
+                background: rgba(0, 0, 0, 0.6);
+                backdrop-filter: blur(4px);
                 justify-content: center;
                 align-items: center;
-            }
-            .modal.active { display: flex; }
-            .modal-content {
-                background: var(--tg-theme-section-bg-color, #fff);
-                border-radius: 16px;
                 padding: 20px;
-                width: 90%;
-                max-width: 340px;
-                text-align: left;
             }
-            .modal-content textarea, .modal-content input {
+            .modal.active {
+                display: flex;
+            }
+            .modal-content {
+                background: white;
+                border-radius: 24px;
+                padding: 24px;
                 width: 100%;
-                padding: 10px;
-                margin: 8px 0;
-                border-radius: 8px;
-                border: 1px solid #ccc;
-                font-size: 14px;
-                background: var(--tg-theme-secondary-bg-color, #fff);
-                color: var(--tg-theme-text-color, #000);
+                max-width: 380px;
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+                animation: fadeInUp 0.3s ease-out;
+                text-align: left;
+                color: #1a202c;
             }
-            .modal-content label { font-weight: 500; font-size: 14px; }
-            .modal-buttons { display: flex; gap: 8px; margin-top: 16px; }
-            .modal-buttons .btn { flex: 1; margin: 0; }
+            .modal-content h3 {
+                font-size: 20px;
+                margin-bottom: 12px;
+            }
+            .modal-content p {
+                font-size: 14px;
+                color: #4a5568;
+                margin-bottom: 16px;
+            }
+            .modal-content label {
+                display: block;
+                font-size: 13px;
+                font-weight: 600;
+                color: #2d3748;
+                margin-bottom: 4px;
+                margin-top: 12px;
+            }
+            .modal-content textarea,
+            .modal-content input {
+                width: 100%;
+                padding: 12px;
+                border-radius: 12px;
+                border: 1px solid #e2e8f0;
+                font-size: 14px;
+                background: #f7fafc;
+                color: #1a202c;
+                resize: vertical;
+                font-family: inherit;
+            }
+            .modal-buttons {
+                display: flex;
+                gap: 10px;
+                margin-top: 24px;
+            }
+            .modal-buttons .btn {
+                flex: 1;
+                margin-bottom: 0;
+            }
         </style>
     </head>
     <body>
@@ -205,57 +315,44 @@ async def miniapp(request: Request):
 
             <div class="balance-block">
                 <div>
-                    <div class="balance-label">FA Баланс</div>
+                    <div class="balance-label">Баланс FA</div>
                     <div class="balance-value" id="faBalance">0</div>
                 </div>
-                <div>⭐</div>
+                <div style="font-size: 40px;">⭐</div>
             </div>
 
-            <button class="btn" id="bindWalletBtn">🔗 Привязать кошелёк</button>
-            <button class="btn btn-outline" id="refreshBtn">🔄 Обновить данные</button>
+            <button class="btn btn-primary" id="bindWalletBtn">🔗 Привязать кошелёк</button>
+            <button class="btn btn-secondary" id="refreshBtn">🔄 Обновить</button>
 
             <div class="footer">
-                <a href="/privacy" style="color: var(--tg-theme-link-color, #2AABEE);">Политика конфиденциальности</a>
+                <a href="/privacy">Политика конфиденциальности</a>
             </div>
         </div>
 
         <!-- Модальное окно привязки -->
         <div class="modal" id="bindModal">
             <div class="modal-content">
-                <h3>Привязка кошелька</h3>
-                <p style="font-size:13px; color: var(--tg-theme-hint-color); margin: 8px 0;">Скопируйте сообщение ниже, подпишите его вашим EVM-кошельком и вставьте адрес и подпись.</p>
+                <h3>🔐 Привязка кошелька</h3>
+                <p>Скопируйте сообщение, подпишите его вашим EVM-кошельком и вставьте адрес и подпись.</p>
                 <label>Сообщение для подписи:</label>
                 <textarea id="messageToSign" readonly rows="4"></textarea>
-                <button class="btn-outline" id="copyMessageBtn" style="font-size:14px; padding:8px; margin:4px 0;">📋 Копировать</button>
+                <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
                 <label>Адрес кошелька (0x...):</label>
                 <input type="text" id="walletAddress" placeholder="0x...">
                 <label>Подпись (0x...):</label>
                 <input type="text" id="signature" placeholder="0x...">
                 <div class="modal-buttons">
-                    <button class="btn" id="confirmBindBtn">✅ Привязать</button>
-                    <button class="btn btn-outline" id="cancelBindBtn">Отмена</button>
+                    <button class="btn btn-primary" id="confirmBindBtn">✅ Привязать</button>
+                    <button class="btn btn-secondary" id="cancelBindBtn">Отмена</button>
                 </div>
             </div>
         </div>
 
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
         <script>
-            // Инициализация Telegram WebApp
             const tg = window.Telegram.WebApp;
             tg.ready();
             tg.expand();
-
-            // Тема
-            const themeParams = tg.themeParams;
-            const setProp = (name, val) => document.documentElement.style.setProperty(name, val);
-            setProp('--tg-theme-bg-color', themeParams.bg_color || '#f5f5f5');
-            setProp('--tg-theme-text-color', themeParams.text_color || '#222');
-            setProp('--tg-theme-hint-color', themeParams.hint_color || '#999');
-            setProp('--tg-theme-button-color', themeParams.button_color || '#2AABEE');
-            setProp('--tg-theme-button-text-color', themeParams.button_text_color || '#fff');
-            setProp('--tg-theme-section-bg-color', themeParams.section_bg_color || '#fff');
-            setProp('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color || '#f0f0f0');
-            setProp('--tg-theme-link-color', themeParams.link_color || '#2AABEE');
 
             const user = tg.initDataUnsafe?.user;
             if (user) {
@@ -264,9 +361,6 @@ async def miniapp(request: Request):
                 document.getElementById('username').textContent = user.username ? '@' + user.username : '';
             }
 
-            let currentNonce = null;
-            let currentMessage = '';
-
             async function loadUserData() {
                 try {
                     const res = await fetch('/api/me', { headers: { 'X-Tg-Init-Data': tg.initData } });
@@ -274,8 +368,11 @@ async def miniapp(request: Request):
                         const data = await res.json();
                         document.getElementById('faBalance').textContent = data.fa_balance || 0;
                         if (data.wallet_address) {
-                            document.getElementById('bindWalletBtn').textContent = '✅ Кошелёк привязан';
-                            document.getElementById('bindWalletBtn').disabled = true;
+                            const btn = document.getElementById('bindWalletBtn');
+                            btn.textContent = '✅ Кошелёк привязан';
+                            btn.disabled = true;
+                            btn.classList.remove('btn-primary');
+                            btn.classList.add('btn-secondary');
                         }
                     }
                 } catch(e) {
@@ -287,8 +384,8 @@ async def miniapp(request: Request):
             loadUserData();
 
             // Привязка кошелька
-            const bindBtn = document.getElementById('bindWalletBtn');
             const modal = document.getElementById('bindModal');
+            const bindBtn = document.getElementById('bindWalletBtn');
             const cancelBtn = document.getElementById('cancelBindBtn');
             const confirmBtn = document.getElementById('confirmBindBtn');
             const copyBtn = document.getElementById('copyMessageBtn');
@@ -299,7 +396,6 @@ async def miniapp(request: Request):
             bindBtn.addEventListener('click', async () => {
                 if (bindBtn.disabled) return;
                 try {
-                    // запрашиваем nonce
                     const res = await fetch('/api/wallet/bind/nonce', {
                         method: 'POST',
                         headers: { 'X-Tg-Init-Data': tg.initData }
@@ -323,8 +419,6 @@ async def miniapp(request: Request):
 
             cancelBtn.addEventListener('click', () => {
                 modal.classList.remove('active');
-                currentNonce = null;
-                currentMessage = '';
             });
 
             copyBtn.addEventListener('click', () => {
@@ -337,7 +431,7 @@ async def miniapp(request: Request):
                 const wallet = walletInput.value.trim();
                 const sig = sigInput.value.trim();
                 if (!wallet || !sig || !currentNonce || !currentMessage) {
-                    tg.showAlert('Заполните все поля и получите сообщение');
+                    tg.showAlert('Заполните все поля');
                     return;
                 }
                 try {
@@ -359,18 +453,22 @@ async def miniapp(request: Request):
                         tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
                         return;
                     }
-                    tg.showAlert('✅ Кошелёк привязан!');
+                    tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
                     modal.classList.remove('active');
-                    // обновить данные
                     loadUserData();
                 } catch(e) {
                     tg.showAlert('Ошибка сети');
                 }
             });
+
+            let currentNonce = null;
+            let currentMessage = '';
         </script>
     </body>
     </html>
     """)
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy(request: Request) -> HTMLResponse:
     return HTMLResponse("""
@@ -420,6 +518,8 @@ async def privacy(request: Request) -> HTMLResponse:
     </body>
     </html>
     """)
+
+
 @app.get("/api/me")
 async def api_me(
     user: User = Depends(get_current_user),
@@ -528,6 +628,14 @@ async def wallet_bind_verify(
 
     await _audit(session, user.telegram_id, "wallet_bound", {"wallet_address": wallet_address})
     await session.commit()
+
+    # Отправляем уведомление пользователю в Telegram
+    initial_balance = user.profile.fa_balance if user.profile else settings.initial_fa_balance
+    await send_telegram_message(
+        user.telegram_id,
+        f"🎉 Кошелёк привязан! Ваш адрес: {wallet_address}\nНа ваш баланс зачислено {initial_balance} FA."
+    )
+
     return JSONResponse({"ok": True, "wallet_address": wallet_address})
 
 
@@ -611,4 +719,3 @@ async def feedback(
     await _audit(session, user.telegram_id, "feedback_submitted", {"topic": topic, "text": text[:4000]})
     await session.commit()
     return JSONResponse({"ok": True})
-

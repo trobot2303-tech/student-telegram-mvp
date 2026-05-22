@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 from sqlalchemy import select
 
 from app.db import SessionLocal, engine
-from app.models import AuditLog, Base, User, WalletBinding
+from app.models import AuditLog, Base, Profile, User, WalletBinding
 from app.settings import get_settings
 
 logger = logging.getLogger("student_mvp.bot")
@@ -55,6 +56,22 @@ async def ensure_user(message: Message) -> None:
     await audit(tg.id, "bot_seen_user")
 
 
+async def send_telegram_message(chat_id: int, text: str) -> bool:
+    """Отправляет сообщение через Telegram Bot API. Возвращает True в случае успеха."""
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                return resp.status == 200
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+        return False
+
+
+# Существующие обработчики
 async def cmd_start(message: Message) -> None:
     await ensure_user(message)
     await message.answer(
@@ -72,6 +89,7 @@ async def cmd_help(message: Message) -> None:
         "/cabinet — открыть Mini App\n"
         "/status — статус привязки\n"
         "/broadcast — админ-рассылка\n"
+        "/addbalance — пополнить баланс пользователя (админ)\n"
     )
 
 
@@ -168,21 +186,72 @@ async def on_message(message: Message, bot: Bot) -> None:
     await message.answer(f"Готово. Доставлено: {delivered}. Ошибок: {failed}.")
 
 
-async def amain() -> None:
+# --- Новая команда /addbalance ---
+async def cmd_addbalance(message: Message) -> None:
+    """Пополнение баланса пользователя (только для админов)."""
+    await ensure_user(message)
+    if not message.from_user or not _is_admin(message.from_user.id):
+        await message.answer("⛔ У вас нет прав для выполнения этой команды.")
+        return
+
+    # Формат: /addbalance <telegram_id> <сумма>
+    parts = message.text.split()
+    if len(parts) != 3:
+        await message.answer("❗ Использование: /addbalance <telegram_id> <сумма>")
+        return
+
+    try:
+        target_id = int(parts[1])
+        amount = float(parts[2])
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ ID и сумма должны быть положительными числами.")
+        return
+
+    async with SessionLocal() as session:
+        async with session.begin():
+            result = await session.execute(select(User).where(User.telegram_id == target_id))
+            user = result.scalar_one_or_none()
+            if not user:
+                await message.answer("🔍 Пользователь с таким Telegram ID не найден.")
+                return
+
+            profile = user.profile
+            if not profile:
+                profile = Profile(user_id=user.id, fa_balance=0, status="student")
+                session.add(profile)
+                await session.flush()
+
+            profile.fa_balance += amount
+
+            # Уведомление получателю
+            await send_telegram_message(
+                target_id,
+                f"💰 На ваш баланс зачислено {amount} FA.\nТекущий баланс: {profile.fa_balance} FA."
+            )
+            await message.answer(f"✅ Пользователю {target_id} начислено {amount} FA.\nЕго баланс: {profile.fa_balance} FA.")
+
+
+# --- Точка входа для запуска бота ---
+async def start_bot() -> None:
+    """Запускает бота (используется как из server.py, так и для ручного запуска)."""
     settings = get_settings()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 
-    # Ensure tables exist (same DB as API)
+    # Таблицы создадутся и здесь (на случай, если бот запущен отдельно)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     bot = Bot(token=settings.telegram_bot_token)
     dp = Dispatcher()
+    # Регистрация обработчиков
     dp.message.register(cmd_start, CommandStart())
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(cmd_cabinet, Command("cabinet"))
     dp.message.register(cmd_status, Command("status"))
     dp.message.register(cmd_broadcast, Command("broadcast"))
+    dp.message.register(cmd_addbalance, Command("addbalance"))
     dp.message.register(on_message, F.text)
 
     logger.info("Bot started")
@@ -190,6 +259,6 @@ async def amain() -> None:
     await dp.start_polling(bot)
 
 
+# Блок для ручного запуска
 if __name__ == "__main__":
-    asyncio.run(amain())
-
+    asyncio.run(start_bot())
