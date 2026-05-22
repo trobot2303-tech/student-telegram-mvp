@@ -564,7 +564,7 @@ async def wallet_bind_verify(
         )
     )
     nonce_row = res.scalar_one_or_none()
-    if not nonce_row or nonce_row.expires_at < _now_utc():
+    if not nonce_row or nonce_row.expires_at.replace(tzinfo=UTC) < _now_utc():
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "nonce_invalid_or_expired"})
         await session.commit()
         raise HTTPException(status_code=400, detail="Nonce invalid or expired")
