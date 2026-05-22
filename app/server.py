@@ -555,7 +555,9 @@ async def wallet_bind_verify(
         await session.commit()
         raise HTTPException(status_code=400, detail="Nonce invalid or expired")
 
-    if not verify_evm_signature(message=message, signature=signature, expected_address=wallet_address):
+    is_valid = verify_evm_signature(message=message, signature=signature, expected_address=wallet_address)
+    logger.info(f"Signature verification result: {is_valid}, message: {message}, signature: {signature}, address: {wallet_address}")
+    if not is_valid:
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "signature_invalid"})
         await session.commit()
         raise HTTPException(status_code=400, detail="Signature invalid")
