@@ -102,7 +102,8 @@ async def health() -> dict:
     return {"ok": True}
 
 
-@app.get("/miniapp", response_class=HTMLResponse)
+
+    @app.get("/miniapp", response_class=HTMLResponse)
 async def miniapp(request: Request):
     return HTMLResponse("""
     <!DOCTYPE html>
@@ -213,10 +214,6 @@ async def miniapp(request: Request):
                 color: white;
                 box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
             }
-            .btn-primary:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
-            }
             .btn-primary:active {
                 transform: scale(0.98);
             }
@@ -224,9 +221,6 @@ async def miniapp(request: Request):
                 background: white;
                 color: #4a5568;
                 border: 2px solid #e2e8f0;
-            }
-            .btn-secondary:hover {
-                background: #f7fafc;
             }
             .footer {
                 margin-top: 16px;
@@ -263,18 +257,12 @@ async def miniapp(request: Request):
                 width: 100%;
                 max-width: 380px;
                 box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-                animation: fadeInUp 0.3s ease-out;
                 text-align: left;
                 color: #1a202c;
             }
             .modal-content h3 {
                 font-size: 20px;
                 margin-bottom: 12px;
-            }
-            .modal-content p {
-                font-size: 14px;
-                color: #4a5568;
-                margin-bottom: 16px;
             }
             .modal-content label {
                 display: block;
@@ -295,22 +283,6 @@ async def miniapp(request: Request):
                 color: #1a202c;
                 resize: vertical;
                 font-family: inherit;
-            }
-            .modal-content a.btn {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                padding: 12px 16px;
-                margin-bottom: 0;
-                border-radius: 12px;
-                font-weight: 600;
-                font-size: 14px;
-                text-decoration: none;
-                transition: all 0.2s ease;
-            }
-            .modal-content a.btn-primary {
-                background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-                color: white;
             }
             .modal-buttons {
                 display: flex;
@@ -346,303 +318,172 @@ async def miniapp(request: Request):
         </div>
 
         <!-- Модальное окно привязки -->
-<div class="modal" id="bindModal">
-    <div class="modal-content">
-        <h3>🔐 Привязка кошелька</h3>
-        <p style="font-size:14px; color: #4a5568; margin-bottom: 12px;">
-            Подпишите сообщение вашим EVM-кошельком
-        </p>
-        
-        <!-- Кнопки диплинков -->
-        <div style="display: flex; gap: 8px; margin: 12px 0;">
-            <button id="metamaskLink" class="btn btn-primary" style="flex:1; font-size:14px;">
-                🦊 MetaMask
-            </button>
-            <button id="trustLink" class="btn btn-primary" style="flex:1; font-size:14px;">
-                🛡️ Trust
-            </button>
+        <div class="modal" id="bindModal">
+            <div class="modal-content">
+                <h3>🔐 Привязка кошелька</h3>
+                <p style="font-size:14px; color: #4a5568; margin-bottom: 16px;">
+                    Скопируйте сообщение, подпишите его в вашем EVM-кошельке (MetaMask, Trust Wallet и др.) и вставьте адрес и подпись ниже.
+                </p>
+                <label>Сообщение для подписи:</label>
+                <textarea id="messageToSign" readonly rows="4"></textarea>
+                <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
+                <label>Адрес кошелька (0x...):</label>
+                <input type="text" id="walletAddress" placeholder="0x...">
+                <label>Подпись (0x...):</label>
+                <input type="text" id="signature" placeholder="0x...">
+                <div class="modal-buttons">
+                    <button class="btn btn-primary" id="confirmBindBtn">✅ Привязать</button>
+                    <button class="btn btn-secondary" id="cancelBindBtn">Отмена</button>
+                </div>
+            </div>
         </div>
-        
-        <label>Сообщение для подписи:</label>
-        <textarea id="messageToSign" readonly rows="4"></textarea>
-        <button class="btn btn-secondary" id="copyMessageBtn" style="font-size:14px; padding:10px; margin-top:8px;">📋 Копировать</button>
-        <label>Адрес кошелька (0x...):</label>
-        <input type="text" id="walletAddress" placeholder="0x...">
-        <label>Подпись (0x...):</label>
-        <input type="text" id="signature" placeholder="0x...">
-        <div class="modal-buttons">
-            <button class="btn btn-primary" id="confirmBindBtn">✅ Привязать</button>
-            <button class="btn btn-secondary" id="cancelBindBtn">Отмена</button>
-        </div>
-    </div>
-</div>
 
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script>
-    var tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+        <script>
+            var tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
 
-    var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
-    var isTelegram = user ? true : false;
-    
-    // Отображаем данные пользователя
-    if (user) {
-        document.getElementById('avatar').textContent = user.first_name.charAt(0);
-        document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
-        document.getElementById('username').textContent = user.username ? '@' + user.username : 'ID: ' + user.id;
-    } else {
-        document.getElementById('avatar').textContent = '👤';
-        document.getElementById('displayName').textContent = 'Демо';
-        document.getElementById('username').textContent = 'тест';
-        document.getElementById('faBalance').textContent = '100';
-    }
+            var user = tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+            var isTelegram = user ? true : false;
+            
+            // Отображаем данные пользователя
+            if (user) {
+                document.getElementById('avatar').textContent = user.first_name.charAt(0);
+                document.getElementById('displayName').textContent = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+                document.getElementById('username').textContent = user.username ? '@' + user.username : 'ID: ' + user.id;
+            }
 
-    // Загрузка данных
-    function loadUserData() {
-        if (!isTelegram) return;
-        
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', '/api/me', true);
-        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                var data = JSON.parse(xhr.responseText);
-                document.getElementById('faBalance').textContent = data.fa_balance || 0;
-                if (data.wallet_address) {
-                    var btn = document.getElementById('bindWalletBtn');
-                    btn.textContent = '✅ Кошелёк привязан';
-                    btn.disabled = true;
-                    btn.style.opacity = '0.6';
+            // Загрузка данных
+            function loadUserData() {
+                if (!isTelegram) return;
+                
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/me', true);
+                xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        var data = JSON.parse(xhr.responseText);
+                        document.getElementById('faBalance').textContent = data.fa_balance || 0;
+                        if (data.wallet_address) {
+                            var btn = document.getElementById('bindWalletBtn');
+                            btn.textContent = '✅ Кошелёк привязан';
+                            btn.disabled = true;
+                            btn.style.opacity = '0.6';
+                        }
+                    }
+                };
+                xhr.send();
+            }
+
+            // Кнопка Обновить
+            document.getElementById('refreshBtn').onclick = function() {
+                if (isTelegram) {
+                    loadUserData();
+                    tg.showAlert('Данные обновлены');
                 }
-            }
-        };
-        xhr.send();
-    }
+            };
 
-    document.getElementById('refreshBtn').onclick = function() {
-        if (isTelegram) {
             loadUserData();
-            tg.showAlert('Данные обновлены');
-        } else {
-            tg.showAlert('Откройте в Telegram');
-        }
-    };
 
-    loadUserData();
+            // Привязка кошелька
+            var modal = document.getElementById('bindModal');
+            var currentNonce = null;
+            var currentMessage = '';
 
-    // === Привязка кошелька ===
-    var currentNonce = null;
-    var currentMessage = '';
+            // Кнопка Привязать
+            document.getElementById('bindWalletBtn').onclick = function() {
+                if (!isTelegram || this.disabled) return;
 
-    document.getElementById('bindWalletBtn').onclick = function() {
-        if (!isTelegram || this.disabled) return;
+                this.textContent = 'Загрузка...';
+                this.disabled = true;
 
-        this.textContent = '⏳ Загрузка...';
-        this.disabled = true;
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/wallet/bind/nonce', true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+                xhr.onload = function() {
+                    var btn = document.getElementById('bindWalletBtn');
+                    btn.textContent = '🔗 Привязать кошелёк';
+                    btn.disabled = false;
 
-        // 1. Получаем nonce с сервера
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/wallet/bind/nonce', true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = function() {
-            var btn = document.getElementById('bindWalletBtn');
-            btn.textContent = '🔗 Привязать кошелёк';
-            btn.disabled = false;
+                    if (xhr.status === 200) {
+                        var data = JSON.parse(xhr.responseText);
+                        currentNonce = data.nonce;
+                        currentMessage = data.message;
+                        document.getElementById('messageToSign').value = currentMessage;
+                        document.getElementById('walletAddress').value = '';
+                        document.getElementById('signature').value = '';
+                        modal.classList.add('active');
+                    } else {
+                        tg.showAlert('Ошибка сервера');
+                    }
+                };
+                xhr.onerror = function() {
+                    var btn = document.getElementById('bindWalletBtn');
+                    btn.textContent = '🔗 Привязать кошелёк';
+                    btn.disabled = false;
+                    tg.showAlert('Нет связи с сервером');
+                };
+                xhr.send();
+            };
 
-            if (xhr.status === 200) {
-                var data = JSON.parse(xhr.responseText);
-                currentNonce = data.nonce;
-                currentMessage = data.message;
+            // Кнопка Отмена
+            document.getElementById('cancelBindBtn').onclick = function() {
+                modal.classList.remove('active');
+            };
 
-                // Показываем модальное окно с выбором: диплинк или ручной
-                showBindModal(currentMessage);
-            } else {
-                tg.showAlert('Ошибка сервера. Попробуйте позже.');
-            }
-        };
-        xhr.onerror = function() {
-            var btn = document.getElementById('bindWalletBtn');
-            btn.textContent = '🔗 Привязать кошелёк';
-            btn.disabled = false;
-            tg.showAlert('Нет связи с сервером');
-        };
-        xhr.send();
-    };
+            // Кнопка Копировать
+            document.getElementById('copyMessageBtn').onclick = function() {
+                document.getElementById('messageToSign').select();
+                document.execCommand('copy');
+                tg.showAlert('Сообщение скопировано!');
+            };
 
-    // Функция показа модального окна
-    function showBindModal(message) {
-        var modal = document.getElementById('bindModal');
-        var messageArea = document.getElementById('messageToSign');
-        var walletInput = document.getElementById('walletAddress');
-        var sigInput = document.getElementById('signature');
-        
-        messageArea.value = message;
-        walletInput.value = '';
-        sigInput.value = '';
-        modal.classList.add('active');
-    }
+            // Кнопка Привязать (подтверждение)
+            document.getElementById('confirmBindBtn').onclick = function() {
+                var wallet = document.getElementById('walletAddress').value.trim();
+                var sig = document.getElementById('signature').value.trim();
 
-    // Кнопка Отмена
-    document.getElementById('cancelBindBtn').onclick = function() {
-        document.getElementById('bindModal').classList.remove('active');
-    };
+                if (!wallet || !sig) {
+                    tg.showAlert('Заполните все поля');
+                    return;
+                }
 
-    // Кнопка Копировать
-    document.getElementById('copyMessageBtn').onclick = function() {
-        var messageArea = document.getElementById('messageToSign');
-        messageArea.select();
-        document.execCommand('copy');
-        tg.showAlert('✅ Сообщение скопировано!');
-    };
+                var btn = this;
+                btn.textContent = 'Отправка...';
+                btn.disabled = true;
 
-    // Кнопка MetaMask (диплинк)
-    document.getElementById('metamaskLink').onclick = function(e) {
-        e.preventDefault();
-        if (!currentMessage) return;
-        
-        // Кодируем сообщение для диплинка
-        var encodedMessage = encodeURIComponent(currentMessage);
-        
-        // Правильный диплинк MetaMask для подписи
-        var deepLink = 'https://metamask.app.link/sign/' + encodedMessage;
-        
-        // Используем Telegram API для открытия ссылки
-        tg.openLink(deepLink);
-        
-        // Показываем инструкцию
-        setTimeout(function() {
-            tg.showAlert(
-                '1. Подпишите сообщение в MetaMask\n' +
-                '2. Скопируйте подпись (0x...)\n' +
-                '3. Вернитесь сюда и вставьте подпись\n\n' +
-                'Если MetaMask не открылся, скопируйте сообщение вручную.'
-            );
-        }, 1000);
-    };
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/wallet/bind/verify', true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
+                xhr.onload = function() {
+                    btn.textContent = '✅ Привязать';
+                    btn.disabled = false;
 
-    // Кнопка Trust Wallet (диплинк)
-    document.getElementById('trustLink').onclick = function(e) {
-        e.preventDefault();
-        if (!currentMessage) return;
-        
-        var encodedMessage = encodeURIComponent(currentMessage);
-        var deepLink = 'https://link.trustwallet.com/sign?message=' + encodedMessage;
-        
-        tg.openLink(deepLink);
-        
-        setTimeout(function() {
-            tg.showAlert(
-                '1. Подпишите сообщение в Trust Wallet\n' +
-                '2. Скопируйте подпись\n' +
-                '3. Вернитесь сюда и вставьте подпись'
-            );
-        }, 1000);
-    };
-
-    // Кнопка Подтвердить привязку
-    document.getElementById('confirmBindBtn').onclick = function() {
-        var wallet = document.getElementById('walletAddress').value.trim();
-        var sig = document.getElementById('signature').value.trim();
-
-        if (!wallet || !sig) {
-            tg.showAlert('Заполните адрес и подпись');
-            return;
-        }
-
-        if (!isTelegram) {
-            tg.showAlert('✅ Тестовая привязка!');
-            document.getElementById('bindModal').classList.remove('active');
-            document.getElementById('faBalance').textContent = '1100';
-            return;
-        }
-
-        var btn = this;
-        btn.textContent = '⏳ Отправка...';
-        btn.disabled = true;
-
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/wallet/bind/verify', true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('X-Tg-Init-Data', tg.initData);
-        xhr.onload = function() {
-            btn.textContent = '✅ Привязать';
-            btn.disabled = false;
-
-            if (xhr.status === 200) {
-                tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
-                document.getElementById('bindModal').classList.remove('active');
-                loadUserData();
-            } else {
-                var err = JSON.parse(xhr.responseText);
-                tg.showAlert('Ошибка: ' + (err.detail || 'Привязка не удалась'));
-            }
-        };
-        xhr.onerror = function() {
-            btn.textContent = '✅ Привязать';
-            btn.disabled = false;
-            tg.showAlert('Нет связи с сервером');
-        };
-        xhr.send(JSON.stringify({
-            wallet_address: wallet,
-            signature: sig,
-            nonce: currentNonce,
-            message: currentMessage
-        }));
-    };
-</script>
-    </body>
-    </html>
-    """)
-
-
-@app.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request) -> HTMLResponse:
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Политика конфиденциальности</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                background: var(--tg-theme-bg-color, #f5f5f5);
-                color: var(--tg-theme-text-color, #222);
-                padding: 20px;
-                max-width: 600px;
-                margin: 0 auto;
-                line-height: 1.6;
-            }
-            h1 { font-size: 24px; margin-bottom: 16px; }
-            h2 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; }
-            p { margin-bottom: 12px; }
-            a { color: var(--tg-theme-link-color, #2AABEE); }
-        </style>
-    </head>
-    <body>
-        <h1>Политика конфиденциальности</h1>
-        <p><strong>Дата последнего обновления:</strong> 23 апреля 2026 г.</p>
-
-        <h2>1. Какие данные мы собираем</h2>
-        <p>При использовании Mini App мы получаем ваш Telegram ID, имя, фамилию и username (если есть) через официальное API Telegram. Эти данные необходимы для функционирования личного кабинета и привязки кошелька.</p>
-        <p>При привязке EVM-кошелька мы сохраняем ваш публичный адрес и историю подписанных сообщений (nonce) для верификации.</p>
-
-        <h2>2. Как мы используем данные</h2>
-        <p>Данные используются исключительно в рамках сервиса: отображение профиля, учёт баланса FA-токенов, отправка уведомлений через бота, выполнение действий, запрошенных пользователем (привязка кошелька, обратная связь).</p>
-
-        <h2>3. Передача данных третьим лицам</h2>
-        <p>Мы не передаём ваши данные третьим лицам, за исключением случаев, предусмотренных законодательством.</p>
-
-        <h2>4. Хранение данных</h2>
-        <p>Данные хранятся в базе данных SQLite на сервере. Вы можете запросить удаление своих данных, написав администратору через бота.</p>
-
-        <h2>5. Контакты</h2>
-        <p>По вопросам конфиденциальности обращайтесь к администратору через Telegram-бота @FA2303bot.</p>
-
-        <p><a href="/miniapp">← Назад в личный кабинет</a></p>
+                    if (xhr.status === 200) {
+                        tg.showAlert('✅ Кошелёк привязан! Баланс обновлён.');
+                        modal.classList.remove('active');
+                        loadUserData();
+                    } else {
+                        var err = JSON.parse(xhr.responseText);
+                        tg.showAlert('Ошибка: ' + (err.detail || 'Не удалось'));
+                    }
+                };
+                xhr.onerror = function() {
+                    btn.textContent = '✅ Привязать';
+                    btn.disabled = false;
+                    tg.showAlert('Нет связи с сервером');
+                };
+                xhr.send(JSON.stringify({
+                    wallet_address: wallet,
+                    signature: sig,
+                    nonce: currentNonce,
+                    message: currentMessage
+                }));
+            };
+        </script>
     </body>
     </html>
     """)
