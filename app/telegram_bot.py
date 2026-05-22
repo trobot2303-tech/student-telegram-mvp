@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.db import SessionLocal, engine
 from app.models import AuditLog, Base, Profile, User, WalletBinding
@@ -42,7 +43,11 @@ async def ensure_user(message: Message) -> None:
         return
     tg = message.from_user
     async with SessionLocal() as session:
-        res = await session.execute(select(User).where(User.telegram_id == tg.id))
+        res = await session.execute(
+            select(User)
+            .where(User.telegram_id == tg.id)
+            .options(selectinload(User.profile))
+        )
         user = res.scalar_one_or_none()
         if not user:
             user = User(
@@ -163,7 +168,6 @@ async def broadcast_send(bot: Bot, segment: str, text: str) -> tuple[int, int]:
 
 
 async def on_message(message: Message, bot: Bot) -> None:
-    # Lightweight parser for /broadcast segment text (single message).
     if not message.text or not message.from_user:
         return
     if not message.text.startswith("/broadcast"):
@@ -186,7 +190,6 @@ async def on_message(message: Message, bot: Bot) -> None:
     await message.answer(f"Готово. Доставлено: {delivered}. Ошибок: {failed}.")
 
 
-# --- Новая команда /addbalance ---
 async def cmd_addbalance(message: Message) -> None:
     """Пополнение баланса пользователя (только для админов)."""
     await ensure_user(message)
@@ -194,7 +197,6 @@ async def cmd_addbalance(message: Message) -> None:
         await message.answer("⛔ У вас нет прав для выполнения этой команды.")
         return
 
-    # Формат: /addbalance <telegram_id> <сумма>
     parts = message.text.split()
     if len(parts) != 3:
         await message.answer("❗ Использование: /addbalance <telegram_id> <сумма>")
@@ -211,7 +213,11 @@ async def cmd_addbalance(message: Message) -> None:
 
     async with SessionLocal() as session:
         async with session.begin():
-            result = await session.execute(select(User).where(User.telegram_id == target_id))
+            result = await session.execute(
+                select(User)
+                .where(User.telegram_id == target_id)
+                .options(selectinload(User.profile))
+            )
             user = result.scalar_one_or_none()
             if not user:
                 await message.answer("🔍 Пользователь с таким Telegram ID не найден.")
@@ -225,7 +231,6 @@ async def cmd_addbalance(message: Message) -> None:
 
             profile.fa_balance += amount
 
-            # Уведомление получателю
             await send_telegram_message(
                 target_id,
                 f"💰 На ваш баланс зачислено {amount} FA.\nТекущий баланс: {profile.fa_balance} FA."
@@ -233,19 +238,16 @@ async def cmd_addbalance(message: Message) -> None:
             await message.answer(f"✅ Пользователю {target_id} начислено {amount} FA.\nЕго баланс: {profile.fa_balance} FA.")
 
 
-# --- Точка входа для запуска бота ---
 async def start_bot() -> None:
     """Запускает бота (используется как из server.py, так и для ручного запуска)."""
     settings = get_settings()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 
-    # Таблицы создадутся и здесь (на случай, если бот запущен отдельно)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     bot = Bot(token=settings.telegram_bot_token)
     dp = Dispatcher()
-    # Регистрация обработчиков
     dp.message.register(cmd_start, CommandStart())
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(cmd_cabinet, Command("cabinet"))
@@ -259,6 +261,5 @@ async def start_bot() -> None:
     await dp.start_polling(bot)
 
 
-# Блок для ручного запуска
 if __name__ == "__main__":
     asyncio.run(start_bot())

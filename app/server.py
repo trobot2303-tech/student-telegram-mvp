@@ -16,7 +16,7 @@ from app.db import engine, get_session
 from app.models import AuditLog, Base, Nonce, Profile, User, WalletBinding
 from app.security import new_nonce, parse_init_data_user, verify_evm_signature
 from app.settings import get_settings
-
+from sqlalchemy.orm import selectinload
 logger = logging.getLogger("student_mvp")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -63,8 +63,12 @@ async def get_current_user(
     tg_user = parse_init_data_user(x_tg_init_data, settings.telegram_bot_token)
     if not tg_user:
         raise HTTPException(status_code=401, detail="Invalid initData")
-
-    res = await session.execute(select(User).where(User.telegram_id == tg_user.id))
+    res = await session.execute(
+    select(User)
+    .where(User.telegram_id == tg_user.id)
+    .options(selectinload(User.wallet), selectinload(User.profile))
+)
+    
     user = res.scalar_one_or_none()
     if not user:
         user = User(
@@ -557,12 +561,12 @@ async def wallet_bind_verify(
         raise HTTPException(status_code=400, detail="wallet_address, signature, nonce, message are required")
 
     res = await session.execute(
-        select(Nonce).where(
-            Nonce.user_id == user.id,
-            Nonce.nonce == nonce_value,
-            Nonce.purpose == "bind_wallet",
-        )
-    )
+    select(Nonce).where(
+        Nonce.user_id == user.id,
+        Nonce.nonce == nonce_value,
+        Nonce.purpose == "bind_wallet",
+    ).options(selectinload(Nonce.user))
+)
     nonce_row = res.scalar_one_or_none()
     if not nonce_row or nonce_row.expires_at.replace(tzinfo=UTC) < _now_utc():
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "nonce_invalid_or_expired"})
@@ -575,7 +579,11 @@ async def wallet_bind_verify(
         raise HTTPException(status_code=400, detail="Signature invalid")
 
     # ensure wallet isn't already bound to someone else
-    res2 = await session.execute(select(WalletBinding).where(WalletBinding.wallet_address == wallet_address))
+    res2 = await session.execute(
+    select(WalletBinding)
+    .where(WalletBinding.wallet_address == wallet_address)
+    .options(selectinload(WalletBinding.user))
+)
     existing = res2.scalar_one_or_none()
     if existing and existing.user_id != user.id:
         await _audit(session, user.telegram_id, "bind_failed", {"reason": "wallet_already_bound"})
